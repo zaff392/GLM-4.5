@@ -406,12 +406,12 @@ export default function Component({ title, children }: Props) {
           
           {/* Options de sécurité pour les opérations sur les fichiers */}
           {allowFileOperations && (
-            <Card className="border-yellow-200 bg-yellow-50">
+            <Card className="border-gray-800 bg-gray-900">
               <CardContent className="pt-4">
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-yellow-600" />
-                    <span className="text-sm font-medium text-yellow-800">
+                    <AlertCircle className="w-4 h-4 text-white" />
+                    <span className="text-sm font-medium text-white">
                       Autoriser GLM à intervenir sur les fichiers :
                     </span>
                   </div>
@@ -425,7 +425,7 @@ export default function Component({ title, children }: Props) {
                         onChange={(e) => handleFileOperationChange('read', e.target.checked)}
                         className="rounded"
                       />
-                      <label htmlFor="allowRead" className="text-sm">
+                      <label htmlFor="allowRead" className="text-sm text-white">
                         Lire les fichiers
                       </label>
                     </div>
@@ -438,7 +438,7 @@ export default function Component({ title, children }: Props) {
                         onChange={(e) => handleFileOperationChange('write', e.target.checked)}
                         className="rounded"
                       />
-                      <label htmlFor="allowWrite" className="text-sm">
+                      <label htmlFor="allowWrite" className="text-sm text-white">
                         Modifier les fichiers
                       </label>
                     </div>
@@ -451,7 +451,7 @@ export default function Component({ title, children }: Props) {
                         onChange={(e) => handleFileOperationChange('delete', e.target.checked)}
                         className="rounded"
                       />
-                      <label htmlFor="allowDelete" className="text-sm">
+                      <label htmlFor="allowDelete" className="text-sm text-white">
                         Supprimer les fichiers
                       </label>
                     </div>

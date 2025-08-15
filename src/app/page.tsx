@@ -26,7 +26,8 @@ import {
   Target,
   Bot,
   ChevronDown,
-  Eye
+  Eye,
+  Lightbulb
 } from 'lucide-react'
 import { glm45Service, type ChatMessage } from '@/lib/glm45-service'
 import {
@@ -41,6 +42,7 @@ import FileBrowser from '@/components/file-browser'
 import SettingsPanel from '@/components/settings-panel'
 import CodeDisplay from '@/components/code-display'
 import CodePreview from '@/components/code-preview'
+import PromptLibrary from '@/components/prompt-library'
 import { themes, getThemeCSS } from '@/lib/themes'
 import { parseCodeBlocks, extractTextWithoutCode } from '@/lib/code-parser'
 
@@ -74,6 +76,7 @@ export default function GLM45Terminal() {
   const [isStagewiseOpen, setIsStagewiseOpen] = useState(false)
   const [isFileBrowserOpen, setIsFileBrowserOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isPromptLibraryOpen, setIsPromptLibraryOpen] = useState(false)
   const [theme, setTheme] = useState('sombre')
   const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'offline'>('checking')
   const [apiKeyConfigured, setApiKeyConfigured] = useState(false)
@@ -318,6 +321,12 @@ console.log("Hello World");
         }
       ]
 
+      // Log pour débogage
+      console.log('=== DÉBOGAGE ENVOI MESSAGE ===')
+      console.log('User input:', inputValue)
+      console.log('API Messages:', apiMessages)
+      console.log('================================')
+
       // Appeler l'API GLM 4.5
       const response = await glm45Service.sendMessage(apiMessages, { 
         apiKey: savedApiKey,
@@ -332,7 +341,7 @@ console.log("Hello World");
         timestamp: new Date(),
         codeBlocks: parseCodeBlocks(response.message.content).map(block => ({
           ...block,
-          showPreview: false
+          showPreview: true // Activer automatiquement la preview
         }))
       }
       
@@ -399,6 +408,18 @@ console.log("Hello World");
       document.execCommand('copy')
       document.body.removeChild(textArea)
     }
+  }
+
+  const handlePromptSelect = (prompt: string) => {
+    setInputValue(prompt)
+    setIsPromptLibraryOpen(false)
+    // Optionnel: Faire défiler jusqu'au champ de saisie
+    setTimeout(() => {
+      const inputElement = document.querySelector('input[placeholder="Saisissez votre message..."]')
+      if (inputElement) {
+        inputElement.focus()
+      }
+    }, 100)
   }
 
   const handleExportChat = (format: 'json' | 'txt' = 'json') => {
@@ -574,6 +595,10 @@ console.log("Hello World");
     setIsFileBrowserOpen(!isFileBrowserOpen)
   }
 
+  const handleOpenPromptLibrary = () => {
+    setIsPromptLibraryOpen(!isPromptLibraryOpen)
+  }
+
   // Gestionnaires d'événements pour Stagewise
   const handleElementTargeted = (element: any) => {
     console.log('Élément ciblé:', element)
@@ -722,6 +747,17 @@ console.log("Hello World");
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>Ouvrir un dossier</p>
+                </TooltipContent>
+              </Tooltip>
+              
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="icon" onClick={handleOpenPromptLibrary}>
+                    <Lightbulb className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Bibliothèque de prompts</p>
                 </TooltipContent>
               </Tooltip>
               
@@ -1000,8 +1036,8 @@ console.log("Hello World");
                                         </div>
                                       </div>
                                       <pre className="p-3 overflow-x-auto text-xs">
-                                        <code className="language-{codeBlock.language}">
-                                          {codeBlock.code}
+                                        <code className={`language-${codeBlock.language}`}>
+                                          {codeBlock.code.replace(/</g, '&lt;').replace(/>/g, '&gt;')}
                                         </code>
                                       </pre>
                                       <div className="bg-muted/50 px-3 py-2 border-t">
@@ -1177,6 +1213,16 @@ console.log("Hello World");
               }
               setMessages(prev => [...prev, notificationMessage])
             }}
+            className="w-full"
+          />
+        </div>
+      )}
+
+      {/* Bibliothèque de prompts */}
+      {isPromptLibraryOpen && (
+        <div className="max-w-6xl mx-auto mt-6">
+          <PromptLibrary
+            onPromptSelect={handlePromptSelect}
             className="w-full"
           />
         </div>

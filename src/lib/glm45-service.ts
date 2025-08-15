@@ -62,13 +62,42 @@ class GLM45Service {
         }),
       })
 
+      // Vérifier d'abord si la réponse est OK
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(`API Error: ${errorData.error || 'Unknown error'}`)
+        // Récupérer le texte de la réponse pour voir ce qu'on reçoit
+        const responseText = await response.text()
+        console.log('API Error Response:', responseText)
+        
+        // Vérifier si c'est du HTML
+        if (responseText.trim().startsWith('<')) {
+          throw new Error(`Server returned HTML instead of JSON. Status: ${response.status}. Response starts with: ${responseText.substring(0, 100)}...`)
+        }
+        
+        // Essayer de parser comme JSON si ce n'est pas du HTML
+        try {
+          const errorData = JSON.parse(responseText)
+          throw new Error(`API Error: ${errorData.error || 'Unknown error'}`)
+        } catch (parseError) {
+          throw new Error(`API Error: ${response.status} - ${responseText.substring(0, 200)}...`)
+        }
       }
 
-      const data: ChatCompletionResponse = await response.json()
-      return data
+      // Pour la réponse succès, vérifier aussi le contenu
+      const responseText = await response.text()
+      console.log('API Success Response:', responseText)
+      
+      // Vérifier si c'est du HTML (même pour une réponse OK)
+      if (responseText.trim().startsWith('<')) {
+        throw new Error(`Server returned HTML instead of JSON for successful response. Response starts with: ${responseText.substring(0, 100)}...`)
+      }
+      
+      // Parser le JSON seulement si on est sûr que c'est du JSON
+      try {
+        const data: ChatCompletionResponse = JSON.parse(responseText)
+        return data
+      } catch (parseError) {
+        throw new Error(`Failed to parse JSON response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}. Response: ${responseText.substring(0, 200)}...`)
+      }
 
     } catch (error) {
       console.error('GLM45 Service Error:', error)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -57,6 +57,9 @@ export default function CodePreview({
   const [jsContent, setJsContent] = useState('')
   const [previewTheme, setPreviewTheme] = useState('light')
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false)
+  const [iframeHeight, setIframeHeight] = useState('600px')
+  const [iframeContent, setIframeContent] = useState('')
+  const [debugInfo, setDebugInfo] = useState('')
   const previewRef = useRef<HTMLIFrameElement>(null)
   const [isLoading, setIsLoading] = useState(false)
 
@@ -67,103 +70,171 @@ export default function CodePreview({
   ]
 
   const currentDevice = devices.find(d => d.name === selectedDevice) || devices[0]
+  
+  // Fonction de debounce pour optimiser les rafraîchissements
+  const debouncedParseCodeContent = useCallback(() => {
+    const timer = setTimeout(() => {
+      if (isPreviewVisible) {
+        parseCodeContent()
+      }
+    }, 300) // Délai de 300ms pour éviter les rafraîchissements trop fréquents
+    
+    return () => clearTimeout(timer)
+  }, [isPreviewVisible, code, language, selectedDevice, previewTheme])
 
   useEffect(() => {
     setIsPreviewVisible(isOpen)
   }, [isOpen])
 
   useEffect(() => {
-    if (isPreviewVisible) {
-      parseCodeContent()
-    }
-  }, [code, language, isPreviewVisible])
+    const cleanup = debouncedParseCodeContent()
+    return cleanup
+  }, [code, language, isPreviewVisible, debouncedParseCodeContent])
+
+  useEffect(() => {
+    const cleanup = debouncedParseCodeContent()
+    return cleanup
+  }, [selectedDevice, debouncedParseCodeContent]) // Rafraîchir lors du changement de device
+
+  useEffect(() => {
+    const cleanup = debouncedParseCodeContent()
+    return cleanup
+  }, [previewTheme, debouncedParseCodeContent]) // Rafraîchir lors du changement de thème
 
   const parseCodeContent = () => {
     setIsLoading(true)
+    setDebugInfo('') // Reset debug info
+    
+    console.log('=== DÉBOGAGE PARSE CODE CONTENT ===')
+    console.log('Code reçu:', code)
+    console.log('Langage:', language)
     
     // Réinitialiser les contenus
     setHtmlContent('')
     setCssContent('')
     setJsContent('')
 
-    // Extraire le code en fonction du langage
-    if (language.toLowerCase() === 'html') {
-      const cleanHtml = code.replace(/```html\n?/, '').replace(/```$/, '').trim()
-      setHtmlContent(cleanHtml)
-      
-      // Extraire le CSS et JavaScript du HTML si présent
-      const styleMatches = cleanHtml.match(/<style[^>]*>([\s\S]*?)<\/style>/gi)
-      const scriptMatches = cleanHtml.match(/<script[^>]*>([\s\S]*?)<\/script>/gi)
-      
-      if (styleMatches) {
-        const css = styleMatches.map(match => match.replace(/<style[^>]*>/, '').replace(/<\/style>/, '')).join('\n')
-        setCssContent(css)
-      }
-      
-      if (scriptMatches) {
-        const js = scriptMatches.map(match => match.replace(/<script[^>]*>/, '').replace(/<\/script>/, '')).join('\n')
-        setJsContent(js)
-      }
-    } else if (language.toLowerCase() === 'css') {
-      const cleanCss = code.replace(/```css\n?/, '').replace(/```$/, '').trim()
-      setCssContent(cleanCss)
-      
-      // Créer un HTML simple pour le CSS
-      setHtmlContent(`
-        <div class="css-preview">
-          <h1>Preview CSS</h1>
-          <p>Ceci est un exemple de texte pour tester le CSS.</p>
-          <button>Bouton exemple</button>
-          <div class="container">
-            <div class="box">Box 1</div>
-            <div class="box">Box 2</div>
-          </div>
-        </div>
-      `)
-    } else if (language.toLowerCase() === 'javascript' || language.toLowerCase() === 'js') {
-      const cleanJs = code.replace(/```javascript\n?/, '').replace(/```js\n?/, '').replace(/```$/, '').trim()
-      setJsContent(cleanJs)
-      
-      // Créer un HTML simple pour le JavaScript
-      setHtmlContent(`
-        <div class="js-preview">
-          <h1>Preview JavaScript</h1>
-          <button id="testButton">Tester le JavaScript</button>
-          <div id="output"></div>
-        </div>
-      `)
-    } else {
-      // Essayer de détecter le type de code dans le contenu
-      const htmlMatches = code.match(/```html\n([\s\S]*?)```/g) || code.match(/<html[^>]*>[\s\S]*?<\/html>/gi)
-      const cssMatches = code.match(/```css\n([\s\S]*?)```/g) || code.match(/<style[^>]*>[\s\S]*?<\/style>/gi)
-      const jsMatches = code.match(/```javascript\n([\s\S]*?)```/g) || code.match(/```js\n([\s\S]*?)```/g) || code.match(/<script[^>]*>[\s\S]*?<\/script>/gi)
+    // Nettoyer le code en fonction du langage
+    let cleanCode = code.replace(/```(\w+)?\n?/, '').replace(/```$/, '').trim()
+    console.log('Code nettoyé:', cleanCode)
 
-      if (htmlMatches) {
-        const htmlCode = htmlMatches[0].replace(/```html\n?/, '').replace(/```$/, '')
-        setHtmlContent(htmlCode)
+    // Détecter si c'est du HTML complet
+    const isFullHtml = cleanCode.toLowerCase().includes('<!doctype html>') || 
+                       cleanCode.toLowerCase().includes('<html') ||
+                       cleanCode.toLowerCase().includes('<head') ||
+                       cleanCode.toLowerCase().includes('<body')
+
+    console.log('Est-ce du HTML complet?', isFullHtml)
+
+    let finalHtmlContent = ''
+    let finalCssContent = ''
+    let finalJsContent = ''
+
+    if (isFullHtml) {
+      // Si c'est du HTML complet, utiliser un parser pour extraire le contenu
+      try {
+        const parser = new DOMParser()
+        const doc = parser.parseFromString(cleanCode, 'text/html')
+        
+        // Extraire le contenu du body
+        finalHtmlContent = doc.body.innerHTML
+        
+        // Extraire les styles du head
+        const styleTags = doc.querySelectorAll('style')
+        finalCssContent = Array.from(styleTags).map(style => style.innerHTML).join('\n')
+        
+        // Extraire les scripts du body
+        const scriptTags = doc.querySelectorAll('script')
+        finalJsContent = Array.from(scriptTags).map(script => script.innerHTML).join('\n')
+        
+        console.log('HTML extrait du body:', finalHtmlContent)
+        console.log('CSS extrait:', finalCssContent)
+        console.log('JS extrait:', finalJsContent)
+        
+        setDebugInfo(`HTML complet détecté - Body: ${finalHtmlContent.length} chars, CSS: ${finalCssContent.length} chars, JS: ${finalJsContent.length} chars`)
+      } catch (error) {
+        console.error('Erreur lors du parsing HTML:', error)
+        finalHtmlContent = cleanCode // Fallback: utiliser le code brut
+        setDebugInfo(`Erreur parsing HTML: ${error}`)
       }
-      
-      if (cssMatches) {
-        const cssCode = cssMatches[0].replace(/```css\n?/, '').replace(/```$/, '')
-        setCssContent(cssCode)
-      }
-      
-      if (jsMatches) {
-        const jsCode = jsMatches[0].replace(/```javascript\n?/, '').replace(/```js\n?/, '').replace(/```$/, '')
-        setJsContent(jsCode)
-      }
-      
-      // Si aucun contenu spécifique n'est trouvé, utiliser le code comme HTML
-      if (!htmlMatches && !cssMatches && !jsMatches) {
-        const cleanCode = code.replace(/```(\w+)?\n?/, '').replace(/```$/, '').trim()
-        if (cleanCode.includes('<') || cleanCode.includes('>')) {
-          setHtmlContent(cleanCode)
-        } else {
-          setJsContent(cleanCode)
+    } else {
+      // Gérer les cas de code spécifiques
+      if (language.toLowerCase() === 'html') {
+        finalHtmlContent = cleanCode
+        
+        // Extraire le CSS et JavaScript du HTML si présent
+        const styleMatches = cleanCode.match(/<style[^>]*>([\s\S]*?)<\/style>/gi)
+        const scriptMatches = cleanCode.match(/<script[^>]*>([\s\S]*?)<\/script>/gi)
+        
+        if (styleMatches) {
+          finalCssContent = styleMatches.map(match => match.replace(/<style[^>]*>/, '').replace(/<\/style>/, '')).join('\n')
+        }
+        
+        if (scriptMatches) {
+          finalJsContent = scriptMatches.map(match => match.replace(/<script[^>]*>/, '').replace(/<\/script>/, '')).join('\n')
+        }
+      } else if (language.toLowerCase() === 'css') {
+        finalCssContent = cleanCode
+        
+        // Créer un HTML simple pour le CSS
+        finalHtmlContent = `
+          <div class="css-preview">
+            <h1>Preview CSS</h1>
+            <p>Ceci est un exemple de texte pour tester le CSS.</p>
+            <button>Bouton exemple</button>
+            <div class="container">
+              <div class="box">Box 1</div>
+              <div class="box">Box 2</div>
+            </div>
+          </div>
+        `
+      } else if (language.toLowerCase() === 'javascript' || language.toLowerCase() === 'js') {
+        finalJsContent = cleanCode
+        
+        // Créer un HTML simple pour le JavaScript
+        finalHtmlContent = `
+          <div class="js-preview">
+            <h1>Preview JavaScript</h1>
+            <button id="testButton">Tester le JavaScript</button>
+            <div id="output"></div>
+          </div>
+        `
+      } else {
+        // Essayer de détecter le type de code dans le contenu
+        const htmlMatches = cleanCode.match(/```html\n([\s\S]*?)```/g) || cleanCode.match(/<html[^>]*>[\s\S]*?<\/html>/gi)
+        const cssMatches = cleanCode.match(/```css\n([\s\S]*?)```/g) || cleanCode.match(/<style[^>]*>[\s\S]*?<\/style>/gi)
+        const jsMatches = cleanCode.match(/```javascript\n([\s\S]*?)```/g) || cleanCode.match(/```js\n([\s\S]*?)```/g) || cleanCode.match(/<script[^>]*>[\s\S]*?<\/script>/gi)
+
+        if (htmlMatches) {
+          finalHtmlContent = htmlMatches[0].replace(/```html\n?/, '').replace(/```$/, '')
+        }
+        
+        if (cssMatches) {
+          finalCssContent = cssMatches[0].replace(/```css\n?/, '').replace(/```$/, '')
+        }
+        
+        if (jsMatches) {
+          finalJsContent = jsMatches[0].replace(/```javascript\n?/, '').replace(/```js\n?/, '').replace(/```$/, '')
+        }
+        
+        // Si aucun contenu spécifique n'est trouvé, utiliser le code comme HTML
+        if (!htmlMatches && !cssMatches && !jsMatches) {
+          if (cleanCode.includes('<') || cleanCode.includes('>')) {
+            finalHtmlContent = cleanCode
+          } else {
+            finalJsContent = cleanCode
+          }
         }
       }
     }
 
+    // Mettre à jour les états
+    setHtmlContent(finalHtmlContent)
+    setCssContent(finalCssContent)
+    setJsContent(finalJsContent)
+
+    console.log('=== FIN DÉBOGAGE PARSE CODE CONTENT ===')
+    
     setTimeout(() => {
       setIsLoading(false)
       updatePreview()
@@ -171,12 +242,12 @@ export default function CodePreview({
   }
 
   const updatePreview = () => {
-    if (!previewRef.current) return
+    console.log('=== DÉBOGAGE UPDATE PREVIEW ===')
+    console.log('HTML Content:', htmlContent)
+    console.log('CSS Content:', cssContent)
+    console.log('JS Content:', jsContent)
 
-    const previewDoc = previewRef.current.contentDocument || previewRef.current.contentWindow?.document
-    if (!previewDoc) return
-
-    let fullHtml = htmlContent
+    let fullHtml = ''
 
     // Si on a du contenu HTML, CSS ou JS séparément, créer une page complète
     if (htmlContent || cssContent || jsContent) {
@@ -261,7 +332,7 @@ export default function CodePreview({
                   testButton.addEventListener('click', function() {
                     const output = document.getElementById('output');
                     if (output) {
-                      output.innerHTML = '<p style=\"color: green; font-weight: bold;\">Le JavaScript fonctionne bien!</p>';
+                      output.innerHTML = '<p style="color: green; font-weight: bold;">Le JavaScript fonctionne bien!</p>';
                     }
                   });
                 }
@@ -284,22 +355,9 @@ export default function CodePreview({
       `
     }
 
-    previewDoc.open()
-    previewDoc.write(fullHtml)
-    previewDoc.close()
-    
-    // Forcer le rechargement des styles et scripts
-    setTimeout(() => {
-      if (previewDoc) {
-        // Recréer les éléments dynamiques si nécessaire
-        const allScripts = previewDoc.querySelectorAll('script');
-        allScripts.forEach(script => {
-          const newScript = previewDoc.createElement('script');
-          newScript.textContent = script.textContent;
-          script.parentNode?.replaceChild(newScript, script);
-        });
-      }
-    }, 100)
+    console.log('HTML généré pour srcdoc:', fullHtml.substring(0, 200) + '...')
+    setIframeContent(fullHtml)
+    console.log('=== FIN DÉBOGAGE UPDATE PREVIEW ===')
   }
 
   const handleRefreshPreview = () => {
@@ -582,6 +640,18 @@ export default function CodePreview({
           </div>
         )}
 
+        {/* Debug Info */}
+        {debugInfo && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-sm font-medium text-blue-800">Debug Info:</span>
+            </div>
+            <p className="text-xs text-blue-700 font-mono">
+              {debugInfo}
+            </p>
+          </div>
+        )}
+
         {/* Preview Content */}
         <div className={`border rounded-lg overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50 bg-white' : ''}`}>
           <div className="bg-muted px-3 py-2 border-b flex items-center justify-between">
@@ -596,7 +666,7 @@ export default function CodePreview({
           </div>
           
           <div className="p-4 bg-white" style={{ 
-            height: isFullscreen ? 'calc(100vh - 60px)' : currentDevice.height,
+            height: isFullscreen ? 'calc(100vh - 60px)' : iframeHeight,
             width: isFullscreen ? '100vw' : currentDevice.width,
             overflow: 'auto'
           }}>
@@ -607,9 +677,27 @@ export default function CodePreview({
             ) : (
               <iframe
                 ref={previewRef}
+                srcDoc={iframeContent}
                 className="w-full h-full border-0"
                 sandbox="allow-scripts allow-same-origin"
                 title="Code Preview"
+                onLoad={(e) => {
+                  try {
+                    const iframe = e.currentTarget
+                    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
+                    if (iframeDoc) {
+                      const newHeight = Math.max(
+                        iframeDoc.body.scrollHeight,
+                        iframeDoc.documentElement.scrollHeight,
+                        400 // Hauteur minimum
+                      )
+                      setIframeHeight(`${newHeight}px`)
+                      console.log('Hauteur de l\'iframe ajustée à:', newHeight)
+                    }
+                  } catch (error) {
+                    console.error('Erreur lors de l\'ajustement de la hauteur:', error)
+                  }
+                }}
               />
             )}
           </div>
