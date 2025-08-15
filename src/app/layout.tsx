@@ -14,21 +14,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Z.ai Code Scaffold - AI-Powered Development",
-  description: "Modern Next.js scaffold optimized for AI-powered development with Z.ai. Built with TypeScript, Tailwind CSS, and shadcn/ui.",
-  keywords: ["Z.ai", "Next.js", "TypeScript", "Tailwind CSS", "shadcn/ui", "AI development", "React"],
-  authors: [{ name: "Z.ai Team" }],
+  title: "GLM 4.5 Terminal - Interface de conversation avancée",
+  description: "Terminal personnalisé pour interagir avec le modèle GLM 4.5. Interface intuitive avec thèmes personnalisables et fonctionnalités avancées.",
+  keywords: ["GLM 4.5", "Terminal", "Chat", "IA", "Z.ai", "Next.js", "TypeScript", "Tailwind CSS"],
+  authors: [{ name: "GLM 4.5 Team" }],
   openGraph: {
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
+    title: "GLM 4.5 Terminal",
+    description: "Interface de conversation avancée avec GLM 4.5",
     url: "https://chat.z.ai",
-    siteName: "Z.ai",
+    siteName: "GLM 4.5",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
+    title: "GLM 4.5 Terminal",
+    description: "Interface de conversation avancée avec GLM 4.5",
   },
 };
 
@@ -38,7 +38,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="fr" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
