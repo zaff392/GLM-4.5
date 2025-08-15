@@ -81,7 +81,7 @@ export default function GLM45Terminal() {
   const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'offline'>('checking')
   const [apiKeyConfigured, setApiKeyConfigured] = useState(false)
   const [apiKeyInput, setApiKeyInput] = useState('')
-  const availableThemes = ['sombre', 'clair', 'cyberpunk', 'matrix']
+  const availableThemes = Object.keys(themes)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
