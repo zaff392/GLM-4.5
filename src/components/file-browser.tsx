@@ -52,6 +52,9 @@ interface FileBrowserProps {
   onFileSelected?: (file: FileItem) => void
   onFolderSelected?: (folder: string) => void
   onCodeAnalysis?: (filePath: string, issues: CodeIssue[]) => void
+  onFileRead?: (filePath: string, content: string) => void
+  onFileWrite?: (filePath: string, content: string) => void
+  allowFileOperations?: boolean
   className?: string
 }
 
@@ -59,6 +62,9 @@ export default function FileBrowser({
   onFileSelected, 
   onFolderSelected, 
   onCodeAnalysis,
+  onFileRead,
+  onFileWrite,
+  allowFileOperations = false,
   className = '' 
 }: FileBrowserProps) {
   const [currentPath, setCurrentPath] = useState('/')
@@ -69,7 +75,13 @@ export default function FileBrowser({
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [codeIssues, setCodeIssues] = useState<CodeIssue[]>([])
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [fileOperations, setFileOperations] = useState({
+    allowRead: false,
+    allowWrite: false,
+    allowDelete: false
+  })
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const folderInputRef = useRef<HTMLInputElement>(null)
 
   // Simuler le chargement des fichiers (dans une vraie application, cela viendrait d'une API)
   useEffect(() => {
@@ -142,6 +154,62 @@ export default function FileBrowser({
         await loadFileContent(file)
       }
     }
+  }
+
+  const handleNativeFileSelect = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleNativeFolderSelect = () => {
+    folderInputRef.current?.click()
+  }
+
+  const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (files && files.length > 0) {
+      const file = files[0]
+      const fileItem: FileItem = {
+        name: file.name,
+        path: `${currentPath}/${file.name}`,
+        type: 'file',
+        size: file.size,
+        modified: new Date(file.lastModified),
+        extension: file.name.split('.').pop()
+      }
+      setSelectedFile(fileItem)
+      onFileSelected?.(fileItem)
+      
+      // Lire le contenu du fichier
+      readFileContent(file)
+    }
+  }
+
+  const handleFolderInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (files && files.length > 0) {
+      // Le navigateur ne permet pas de sélectionner des dossiers nativement, 
+      // mais on peut simuler en prenant le premier fichier comme représentant du dossier
+      const file = files[0]
+      const folderPath = file.webkitRelativePath?.split('/')[0] || 'selected_folder'
+      onFolderSelected?.(folderPath)
+    }
+  }
+
+  const readFileContent = async (file: File) => {
+    try {
+      const content = await file.text()
+      setSelectedFile(prev => prev ? { ...prev, content } : null)
+      onFileRead?.(file.name, content)
+    } catch (error) {
+      console.error('Erreur lors de la lecture du fichier:', error)
+    }
+  }
+
+  const handleFileOperationChange = (operation: 'read' | 'write' | 'delete', value: boolean) => {
+    setFileOperations(prev => ({
+      ...prev,
+      [`allow${operation.charAt(0).toUpperCase() + operation.slice(1)}`]: value
+    }))
   }
 
   const loadFileContent = async (file: FileItem) => {
@@ -309,6 +377,18 @@ export default function Component({ title, children }: Props) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Sélection native */}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleNativeFileSelect} className="flex-1">
+              <Upload className="w-4 h-4 mr-2" />
+              Sélectionner un fichier
+            </Button>
+            <Button variant="outline" onClick={handleNativeFolderSelect} className="flex-1">
+              <FolderOpen className="w-4 h-4 mr-2" />
+              Sélectionner un dossier
+            </Button>
+          </div>
+
           <div className="flex gap-2">
             <div className="flex-1 relative">
               <Search className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
@@ -322,10 +402,64 @@ export default function Component({ title, children }: Props) {
             <Button variant="outline" onClick={() => loadFiles(currentPath)}>
               <RefreshCw className="w-4 h-4" />
             </Button>
-            <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-              <Upload className="w-4 h-4" />
-            </Button>
           </div>
+          
+          {/* Options de sécurité pour les opérations sur les fichiers */}
+          {allowFileOperations && (
+            <Card className="border-yellow-200 bg-yellow-50">
+              <CardContent className="pt-4">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-yellow-600" />
+                    <span className="text-sm font-medium text-yellow-800">
+                      Autoriser GLM à intervenir sur les fichiers :
+                    </span>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="allowRead"
+                        checked={fileOperations.allowRead}
+                        onChange={(e) => handleFileOperationChange('read', e.target.checked)}
+                        className="rounded"
+                      />
+                      <label htmlFor="allowRead" className="text-sm">
+                        Lire les fichiers
+                      </label>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="allowWrite"
+                        checked={fileOperations.allowWrite}
+                        onChange={(e) => handleFileOperationChange('write', e.target.checked)}
+                        className="rounded"
+                      />
+                      <label htmlFor="allowWrite" className="text-sm">
+                        Modifier les fichiers
+                      </label>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="allowDelete"
+                        checked={fileOperations.allowDelete}
+                        onChange={(e) => handleFileOperationChange('delete', e.target.checked)}
+                        className="rounded"
+                      />
+                      <label htmlFor="allowDelete" className="text-sm">
+                        Supprimer les fichiers
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
           
           <div className="text-sm text-muted-foreground">
             Chemin actuel : {currentPath}
@@ -473,15 +607,22 @@ export default function Component({ title, children }: Props) {
         </Card>
       </div>
       
+      {/* Inputs cachés pour la sélection native */}
       <input
         ref={fileInputRef}
         type="file"
         multiple
         className="hidden"
-        onChange={(e) => {
-          // Gérer l'upload de fichiers
-          console.log('Files uploaded:', e.target.files)
-        }}
+        onChange={handleFileInputChange}
+      />
+      
+      <input
+        ref={folderInputRef}
+        type="file"
+        multiple
+        webkitdirectory=""
+        className="hidden"
+        onChange={handleFolderInputChange}
       />
     </div>
   )

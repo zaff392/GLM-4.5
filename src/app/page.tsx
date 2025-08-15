@@ -274,6 +274,9 @@ Vos capacités incluent :
 - Fournir des explications détaillées sur le code généré
 - Corriger et améliorer du code existant
 - Proposer des meilleures pratiques de développement
+- Lire et analyser des fichiers de code
+- Corriger des erreurs dans des fichiers existants
+- Optimiser et refactoriser du code
 
 Instructions :
 1. Quand l'utilisateur demande du code, fournissez toujours du code complet et fonctionnel
@@ -282,6 +285,8 @@ Instructions :
 4. Fournissez des instructions d'utilisation si nécessaire
 5. Soyez précis et concis dans vos réponses
 6. Adaptez le niveau de détail selon la demande de l'utilisateur
+7. Quand un fichier est sélectionné, vous pouvez lire son contenu et proposer des corrections
+8. Demandez toujours l'autorisation avant de modifier des fichiers
 
 Exemple de formatage :
 \`\`\`html
@@ -1121,6 +1126,7 @@ console.log("Hello World");
       {isFileBrowserOpen && (
         <div className="max-w-6xl mx-auto mt-6">
           <FileBrowser
+            allowFileOperations={true}
             onFileSelected={(file) => {
               console.log('Fichier sélectionné:', file)
               const notificationMessage: Message = {
@@ -1147,6 +1153,26 @@ console.log("Hello World");
                 id: Date.now().toString(),
                 role: 'assistant',
                 content: `J'ai analysé le fichier ${filePath} et j'ai trouvé ${issues.length} problème(s) : ${issues.map(i => i.message).join(', ')}`,
+                timestamp: new Date(),
+              }
+              setMessages(prev => [...prev, notificationMessage])
+            }}
+            onFileRead={(filePath, content) => {
+              console.log('Fichier lu:', filePath, 'Taille:', content.length)
+              const notificationMessage: Message = {
+                id: Date.now().toString(),
+                role: 'assistant',
+                content: `J'ai lu le fichier ${filePath} (${content.length} caractères). Vous pouvez maintenant me demander de l'analyser ou de le corriger.`,
+                timestamp: new Date(),
+              }
+              setMessages(prev => [...prev, notificationMessage])
+            }}
+            onFileWrite={(filePath, content) => {
+              console.log('Fichier écrit:', filePath, 'Taille:', content.length)
+              const notificationMessage: Message = {
+                id: Date.now().toString(),
+                role: 'assistant',
+                content: `J'ai modifié le fichier ${filePath} avec succès.`,
                 timestamp: new Date(),
               }
               setMessages(prev => [...prev, notificationMessage])
