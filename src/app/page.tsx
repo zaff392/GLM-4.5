@@ -25,7 +25,8 @@ import {
   FolderOpen,
   Target,
   Bot,
-  ChevronDown
+  ChevronDown,
+  Eye
 } from 'lucide-react'
 import { glm45Service, type ChatMessage } from '@/lib/glm45-service'
 import {
@@ -39,6 +40,7 @@ import Stagewise from '@/components/stagewise'
 import FileBrowser from '@/components/file-browser'
 import SettingsPanel from '@/components/settings-panel'
 import CodeDisplay from '@/components/code-display'
+import CodePreview from '@/components/code-preview'
 import { themes, getThemeCSS } from '@/lib/themes'
 import { parseCodeBlocks, extractTextWithoutCode } from '@/lib/code-parser'
 
@@ -53,6 +55,7 @@ interface Message {
     title?: string
     description?: string
     fileName?: string
+    showPreview?: boolean
   }>
 }
 
@@ -322,7 +325,10 @@ console.log("Hello World");
         role: 'assistant',
         content: response.message.content,
         timestamp: new Date(),
-        codeBlocks: parseCodeBlocks(response.message.content)
+        codeBlocks: parseCodeBlocks(response.message.content).map(block => ({
+          ...block,
+          showPreview: false
+        }))
       }
       
       setMessages(prev => [...prev, assistantMessage])
@@ -340,6 +346,20 @@ console.log("Hello World");
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleTogglePreview = (messageId: string, codeBlockIndex: number) => {
+    setMessages(prev => prev.map(msg => {
+      if (msg.id === messageId && msg.codeBlocks) {
+        const updatedCodeBlocks = [...msg.codeBlocks]
+        updatedCodeBlocks[codeBlockIndex] = {
+          ...updatedCodeBlocks[codeBlockIndex],
+          showPreview: !updatedCodeBlocks[codeBlockIndex].showPreview
+        }
+        return { ...msg, codeBlocks: updatedCodeBlocks }
+      }
+      return msg
+    }))
   }
 
   const handleResetConversation = () => {
@@ -959,39 +979,65 @@ console.log("Hello World");
                             
                             {/* Blocs de code */}
                             {message.codeBlocks && message.codeBlocks.length > 0 && (
-                              <div className="space-y-3">
+                              <div className="space-y-4">
                                 {message.codeBlocks.map((codeBlock, index) => (
-                                  <div key={index} className="border rounded-lg overflow-hidden">
-                                    <div className="bg-muted px-3 py-2 border-b">
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-xs font-medium">
-                                          {codeBlock.title || `${codeBlock.language} Code`}
-                                        </span>
-                                        <span className="text-xs opacity-70">
-                                          {codeBlock.fileName}
-                                        </span>
+                                  <div key={index} className="space-y-3">
+                                    {/* Code Display */}
+                                    <div className="border rounded-lg overflow-hidden">
+                                      <div className="bg-muted px-3 py-2 border-b">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs font-medium">
+                                            {codeBlock.title || `${codeBlock.language} Code`}
+                                          </span>
+                                          <span className="text-xs opacity-70">
+                                            {codeBlock.fileName}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      <pre className="p-3 overflow-x-auto text-xs">
+                                        <code className="language-{codeBlock.language}">
+                                          {codeBlock.code}
+                                        </code>
+                                      </pre>
+                                      <div className="bg-muted/50 px-3 py-2 border-t">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs opacity-70">
+                                            {codeBlock.description || `Code ${codeBlock.language}`}
+                                          </span>
+                                          <div className="flex items-center gap-1">
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={() => handleCopyText(codeBlock.code)}
+                                              className="h-6 px-2"
+                                            >
+                                              <Copy className="w-3 h-3" />
+                                            </Button>
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={() => handleTogglePreview(message.id, index)}
+                                              className="h-6 px-2"
+                                            >
+                                              <Eye className="w-3 h-3" />
+                                            </Button>
+                                          </div>
+                                        </div>
                                       </div>
                                     </div>
-                                    <pre className="p-3 overflow-x-auto text-xs">
-                                      <code className="language-{codeBlock.language}">
-                                        {codeBlock.code}
-                                      </code>
-                                    </pre>
-                                    <div className="bg-muted/50 px-3 py-2 border-t">
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-xs opacity-70">
-                                          {codeBlock.description || `Code ${codeBlock.language}`}
-                                        </span>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => handleCopyText(codeBlock.code)}
-                                          className="h-6 px-2"
-                                        >
-                                          <Copy className="w-3 h-3" />
-                                        </Button>
-                                      </div>
-                                    </div>
+                                    
+                                    {/* Code Preview */}
+                                    {codeBlock.showPreview && (
+                                      <CodePreview
+                                        code={codeBlock.code}
+                                        language={codeBlock.language}
+                                        title={codeBlock.title}
+                                        description={codeBlock.description}
+                                        fileName={codeBlock.fileName}
+                                        isOpen={codeBlock.showPreview}
+                                        onToggle={() => handleTogglePreview(message.id, index)}
+                                      />
+                                    )}
                                   </div>
                                 ))}
                               </div>
