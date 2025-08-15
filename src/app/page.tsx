@@ -8,6 +8,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { 
   Send, 
   RefreshCw, 
@@ -35,19 +37,23 @@ import {
 import html2canvas from 'html2canvas'
 import Stagewise from '@/components/stagewise'
 import FileBrowser from '@/components/file-browser'
-
-const themes = {
-  sombre: { name: 'Sombre' },
-  clair: { name: 'Clair' },
-  cyberpunk: { name: 'Cyberpunk' },
-  matrix: { name: 'Matrix' },
-}
+import SettingsPanel from '@/components/settings-panel'
+import CodeDisplay from '@/components/code-display'
+import { themes, getThemeCSS } from '@/lib/themes'
+import { parseCodeBlocks, extractTextWithoutCode } from '@/lib/code-parser'
 
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
+  codeBlocks?: Array<{
+    language: string
+    code: string
+    title?: string
+    description?: string
+    fileName?: string
+  }>
 }
 
 interface ArtifactType {
@@ -64,7 +70,11 @@ export default function GLM45Terminal() {
   const [selectedArtifact, setSelectedArtifact] = useState('')
   const [isStagewiseOpen, setIsStagewiseOpen] = useState(false)
   const [isFileBrowserOpen, setIsFileBrowserOpen] = useState(false)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [theme, setTheme] = useState('sombre')
+  const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'offline'>('checking')
+  const [apiKeyConfigured, setApiKeyConfigured] = useState(false)
+  const [apiKeyInput, setApiKeyInput] = useState('')
   const availableThemes = ['sombre', 'clair', 'cyberpunk', 'matrix']
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -88,6 +98,149 @@ export default function GLM45Terminal() {
     scrollToBottom()
   }, [messages])
 
+  useEffect(() => {
+    // Vérifier si la clé API est déjà configurée dans le localStorage
+    const savedApiKey = localStorage.getItem('zai_api_key')
+    if (savedApiKey) {
+      setApiKeyConfigured(true)
+    }
+    
+    checkApiStatus()
+  }, [])
+
+  useEffect(() => {
+    // Appliquer le thème CSS
+    const themeCSS = getThemeCSS(theme)
+    let styleElement = document.getElementById('theme-css')
+    
+    if (!styleElement) {
+      styleElement = document.createElement('style')
+      styleElement.id = 'theme-css'
+      document.head.appendChild(styleElement)
+    }
+    
+    styleElement.textContent = themeCSS
+  }, [theme])
+
+  const handleRemoveApiKey = () => {
+    try {
+      // Supprimer la clé API du localStorage
+      localStorage.removeItem('zai_api_key')
+      setApiKeyConfigured(false)
+      setApiKeyInput('')
+      
+      // Mettre à jour le statut de l'API
+      setApiStatus('offline')
+      
+      // Afficher un message de confirmation
+      const notificationMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: 'Clé API supprimée avec succès.',
+        timestamp: new Date(),
+      }
+      setMessages(prev => [...prev, notificationMessage])
+    } catch (error) {
+      console.error('Erreur lors de la suppression de la clé API:', error)
+      
+      // Afficher un message d'erreur
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: 'Erreur lors de la suppression de la clé API. Veuillez réessayer.',
+        timestamp: new Date(),
+      }
+      setMessages(prev => [...prev, errorMessage])
+    }
+  }
+
+  const handleSaveApiKey = async () => {
+    if (!apiKeyInput.trim()) {
+      // Afficher un message d'erreur
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: 'Veuillez entrer une clé API valide.',
+        timestamp: new Date(),
+      }
+      setMessages(prev => [...prev, errorMessage])
+      return
+    }
+    
+    try {
+      // Sauvegarder la clé API dans le localStorage
+      localStorage.setItem('zai_api_key', apiKeyInput.trim())
+      setApiKeyConfigured(true)
+      setApiKeyInput('')
+      
+      // Vérifier à nouveau le statut de l'API
+      await checkApiStatus()
+      
+      // Afficher un message de confirmation
+      const notificationMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: 'Clé API sauvegardée avec succès. L\'API GLM 4.5 est maintenant prête à être utilisée.',
+        timestamp: new Date(),
+      }
+      setMessages(prev => [...prev, notificationMessage])
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde de la clé API:', error)
+      
+      // Afficher un message d'erreur
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: 'Erreur lors de la sauvegarde de la clé API. Veuillez réessayer.',
+        timestamp: new Date(),
+      }
+      setMessages(prev => [...prev, errorMessage])
+    }
+  }
+
+  const checkApiStatus = async () => {
+    setApiStatus('checking')
+    
+    try {
+      // Récupérer la clé API du localStorage
+      const savedApiKey = localStorage.getItem('zai_api_key')
+      
+      // Vérifier si la clé API est configurée en testant l'API
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: 'test' }],
+          max_tokens: 10,
+          apiKey: savedApiKey,
+        }),
+      })
+      
+      if (response.ok) {
+        setApiStatus('online')
+        setApiKeyConfigured(true)
+        console.log('API GLM 4.5 opérationnelle')
+      } else {
+        const errorData = await response.json()
+        console.error('Erreur API:', errorData)
+        
+        if (errorData.error && errorData.error.includes('API key not configured')) {
+          setApiKeyConfigured(false)
+          console.log('Clé API non configurée')
+        } else {
+          setApiKeyConfigured(true) // L'API est configurée mais il y a une autre erreur
+        }
+        setApiStatus('offline')
+      }
+    } catch (error) {
+      console.error('API Status Check Error:', error)
+      setApiStatus('offline')
+      setApiKeyConfigured(false)
+    }
+  }
+
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return
 
@@ -103,11 +256,49 @@ export default function GLM45Terminal() {
     setIsLoading(true)
 
     try {
+      // Récupérer la clé API du localStorage
+      const savedApiKey = localStorage.getItem('zai_api_key')
+      
       // Préparer les messages pour l'API
       const apiMessages: ChatMessage[] = [
         {
           role: 'system',
-          content: 'Vous êtes GLM 4.5, un assistant IA avancé. Répondez de manière utile et précise aux questions de l\'utilisateur.'
+          content: `Vous êtes GLM 4.5, un assistant IA avancé spécialisé dans le développement web et la génération de code. 
+
+Vos capacités incluent :
+- Générer du code HTML, CSS, JavaScript, TypeScript, React, Next.js
+- Créer des composants UI complets et fonctionnels
+- Fournir des explications détaillées sur le code généré
+- Corriger et améliorer du code existant
+- Proposer des meilleures pratiques de développement
+
+Instructions :
+1. Quand l'utilisateur demande du code, fournissez toujours du code complet et fonctionnel
+2. Utilisez des balises de code markdown (\`\`\`) pour formater le code
+3. Incluez des commentaires explicatifs dans le code
+4. Fournissez des instructions d'utilisation si nécessaire
+5. Soyez précis et concis dans vos réponses
+6. Adaptez le niveau de détail selon la demande de l'utilisateur
+
+Exemple de formatage :
+\`\`\`html
+<!-- Votre code HTML ici -->
+<div class="example">
+  <p>Contenu exemple</p>
+</div>
+\`\`\`
+
+\`\`\`css
+/* Votre CSS ici */
+.example {
+  color: blue;
+}
+\`\`\`
+
+\`\`\`javascript
+// Votre JavaScript ici
+console.log("Hello World");
+\`\`\``
         },
         ...messages.map(msg => ({
           role: msg.role as 'user' | 'assistant',
@@ -120,13 +311,18 @@ export default function GLM45Terminal() {
       ]
 
       // Appeler l'API GLM 4.5
-      const response = await glm45Service.sendMessage(apiMessages)
+      const response = await glm45Service.sendMessage(apiMessages, { 
+        apiKey: savedApiKey,
+        temperature: 0.7,
+        max_tokens: 2000
+      })
       
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: response.message.content,
         timestamp: new Date(),
+        codeBlocks: parseCodeBlocks(response.message.content)
       }
       
       setMessages(prev => [...prev, assistantMessage])
@@ -148,6 +344,19 @@ export default function GLM45Terminal() {
 
   const handleResetConversation = () => {
     setMessages([])
+    setInputValue('')
+    setSelectedArtifact('')
+    setIsLoading(false)
+    console.log('Conversation réinitialisée')
+    
+    // Afficher une notification de confirmation
+    const notificationMessage: Message = {
+      id: Date.now().toString(),
+      role: 'assistant',
+      content: 'Conversation réinitialisée avec succès. Vous pouvez commencer une nouvelle conversation.',
+      timestamp: new Date(),
+    }
+    setMessages([notificationMessage])
   }
 
   const handleCopyText = async (text: string) => {
@@ -328,8 +537,7 @@ export default function GLM45Terminal() {
   }
 
   const handleOpenSettings = () => {
-    // Placeholder pour les paramètres
-    alert('Paramètres à implémenter')
+    setIsSettingsOpen(true)
   }
 
   const handleOpenHistory = () => {
@@ -359,6 +567,9 @@ export default function GLM45Terminal() {
     
     // Envoyer la correction au modèle GLM 4.5
     try {
+      // Récupérer la clé API du localStorage
+      const savedApiKey = localStorage.getItem('zai_api_key')
+      
       const apiMessages: ChatMessage[] = [
         {
           role: 'system',
@@ -374,7 +585,7 @@ export default function GLM45Terminal() {
         }
       ]
 
-      const response = await glm45Service.sendMessage(apiMessages)
+      const response = await glm45Service.sendMessage(apiMessages, { apiKey: savedApiKey })
       
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -609,6 +820,88 @@ export default function GLM45Terminal() {
                 </Button>
               </CardContent>
             </Card>
+
+            {/* Section API */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Bot className="w-5 h-5" />
+                  Statut de l'API
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Statut:</span>
+                  <Badge variant={apiStatus === 'online' ? 'default' : apiStatus === 'checking' ? 'secondary' : 'destructive'}>
+                    {apiStatus === 'online' ? 'En ligne' : apiStatus === 'checking' ? 'Vérification...' : 'Hors ligne'}
+                  </Badge>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Clé API:</span>
+                  <Badge variant={apiKeyConfigured ? 'default' : 'destructive'}>
+                    {apiKeyConfigured ? 'Configurée' : 'Non configurée'}
+                  </Badge>
+                </div>
+                
+                {!apiKeyConfigured && (
+                  <Alert>
+                    <AlertDescription>
+                      La clé API ZAI n'est pas configurée. Veuillez ajouter votre clé API ci-dessous.
+                    </AlertDescription>
+                  </Alert>
+                )}
+                
+                {!apiKeyConfigured && (
+                  <div className="space-y-2">
+                    <Input
+                      type="password"
+                      value={apiKeyInput}
+                      onChange={(e) => setApiKeyInput(e.target.value)}
+                      placeholder="Entrez votre clé API ZAI..."
+                      className="w-full"
+                    />
+                    <Button 
+                      variant="default" 
+                      size="sm" 
+                      onClick={handleSaveApiKey}
+                      disabled={!apiKeyInput.trim()}
+                      className="w-full"
+                    >
+                      Sauvegarder la clé API
+                    </Button>
+                  </div>
+                )}
+                
+                {apiKeyConfigured && (
+                  <div className="space-y-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={handleRemoveApiKey}
+                      className="w-full"
+                    >
+                      Supprimer la clé API
+                    </Button>
+                  </div>
+                )}
+                
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={checkApiStatus}
+                  disabled={apiStatus === 'checking'}
+                  className="w-full"
+                >
+                  {apiStatus === 'checking' ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                  )}
+                  Vérifier le statut
+                </Button>
+              </CardContent>
+            </Card>
           </div>
 
           {/* Zone de chat principale */}
@@ -658,7 +951,52 @@ export default function GLM45Terminal() {
                               {formatTime(message.timestamp)}
                             </span>
                           </div>
-                          <div className="text-sm">{message.content}</div>
+                          <div className="text-sm space-y-3">
+                            {/* Texte sans les blocs de code */}
+                            {extractTextWithoutCode(message.content) && (
+                              <div>{extractTextWithoutCode(message.content)}</div>
+                            )}
+                            
+                            {/* Blocs de code */}
+                            {message.codeBlocks && message.codeBlocks.length > 0 && (
+                              <div className="space-y-3">
+                                {message.codeBlocks.map((codeBlock, index) => (
+                                  <div key={index} className="border rounded-lg overflow-hidden">
+                                    <div className="bg-muted px-3 py-2 border-b">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-xs font-medium">
+                                          {codeBlock.title || `${codeBlock.language} Code`}
+                                        </span>
+                                        <span className="text-xs opacity-70">
+                                          {codeBlock.fileName}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <pre className="p-3 overflow-x-auto text-xs">
+                                      <code className="language-{codeBlock.language}">
+                                        {codeBlock.code}
+                                      </code>
+                                    </pre>
+                                    <div className="bg-muted/50 px-3 py-2 border-t">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-xs opacity-70">
+                                          {codeBlock.description || `Code ${codeBlock.language}`}
+                                        </span>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => handleCopyText(codeBlock.code)}
+                                          className="h-6 px-2"
+                                        >
+                                          <Copy className="w-3 h-3" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                           <div className="flex justify-end mt-2">
                             <Button
                               variant="ghost"
@@ -771,6 +1109,19 @@ export default function GLM45Terminal() {
           />
         </div>
       )}
+
+      {/* Panneau des paramètres */}
+      <SettingsPanel
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        currentTheme={theme}
+        onThemeChange={setTheme}
+        apiKeyConfigured={apiKeyConfigured}
+        onSaveApiKey={handleSaveApiKey}
+        onRemoveApiKey={handleRemoveApiKey}
+        onExportChat={handleExportChat}
+        onImportChat={handleImportChat}
+      />
     </div>
   )
 }

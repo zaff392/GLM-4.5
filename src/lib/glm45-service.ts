@@ -31,6 +31,7 @@ interface ChatServiceOptions {
   temperature?: number
   max_tokens?: number
   stream?: boolean
+  apiKey?: string
 }
 
 class GLM45Service {
@@ -44,7 +45,7 @@ class GLM45Service {
     messages: ChatMessage[],
     options: ChatServiceOptions = {}
   ): Promise<ChatCompletionResponse> {
-    const { temperature = 1, max_tokens = 1000, stream = false } = options
+    const { temperature = 1, max_tokens = 1000, stream = false, apiKey } = options
 
     try {
       const response = await fetch(this.apiBaseUrl, {
@@ -57,6 +58,7 @@ class GLM45Service {
           temperature,
           max_tokens,
           stream,
+          apiKey,
         }),
       })
 

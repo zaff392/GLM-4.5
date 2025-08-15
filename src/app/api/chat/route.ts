@@ -11,12 +11,13 @@ interface ChatRequestBody {
   temperature?: number
   max_tokens?: number
   stream?: boolean
+  apiKey?: string
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: ChatRequestBody = await request.json()
-    const { messages, temperature = 1, max_tokens = 1000, stream = false } = body
+    const { messages, temperature = 1, max_tokens = 1000, stream = false, apiKey } = body
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json(
@@ -26,8 +27,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Vérifier si la clé API est configurée
-    const apiKey = process.env.ZAI_API_KEY
-    if (!apiKey) {
+    const finalApiKey = apiKey || process.env.ZAI_API_KEY
+    if (!finalApiKey) {
       return NextResponse.json(
         { error: 'API key not configured' },
         { status: 500 }
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Initialiser le client ZAI
-    const zai = await ZAI.create()
+    const zai = await ZAI.create({ apiKey: finalApiKey })
 
     // Préparer les messages pour l'API
     const apiMessages = messages.map(msg => ({
